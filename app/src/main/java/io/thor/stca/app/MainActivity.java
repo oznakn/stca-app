@@ -1,36 +1,76 @@
 package io.thor.stca.app;
 
-import android.Manifest;
 import android.content.DialogInterface;
-import android.content.pm.PackageManager;
+import android.content.Intent;
+import android.graphics.Typeface;
 import android.hardware.biometrics.BiometricPrompt;
-import android.hardware.fingerprint.FingerprintManager;
 import android.os.Bundle;
 import android.os.CancellationSignal;
+import android.os.Handler;
+import android.util.Log;
 import android.view.View;
-import android.widget.Button;
+import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
 import androidx.core.hardware.fingerprint.FingerprintManagerCompat;
 
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.gson.JsonObject;
+import com.koushikdutta.async.future.FutureCallback;
+import com.koushikdutta.ion.Ion;
+
+
 public class MainActivity extends AppCompatActivity {
-    private Button mButton;
+    private final static int SCANNER_ACTIVITY = 116;
+
+    private TextView mTextView;
+    private ImageView mImageView;
+    private FloatingActionButton mButtonScan;
+
+    private String lastScannedBarcode = "";
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mButton = findViewById(R.id.button);
-        mButton.setOnClickListener(new View.OnClickListener() {
+        Ion.getDefault(this).getConscryptMiddleware().enable(false);
+
+        mImageView = findViewById(R.id.imageView);
+        mTextView = findViewById(R.id.textView);
+
+        Typeface custom_font = Typeface.createFromAsset(getAssets(),  "font.ttf");
+        mTextView.setTypeface(custom_font);
+
+        mButtonScan = findViewById(R.id.buttonScan);
+        mButtonScan.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                startFingerPrint();
+                startBarcodeScan();
             }
         });
+    }
+
+    private void startBarcodeScan() {
+        startActivityForResult(new Intent(MainActivity.this, ScannerAcitivity.class), SCANNER_ACTIVITY);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == SCANNER_ACTIVITY && resultCode == RESULT_OK) {
+            String barcode = data.getStringExtra("data");
+
+            if (barcode != null) {
+                lastScannedBarcode = barcode;
+
+                startFingerPrint();
+            }
+        }
     }
 
     private void startFingerPrint() {
@@ -63,28 +103,73 @@ public class MainActivity extends AppCompatActivity {
                 .authenticate(mCancellationSignal, this.getMainExecutor(), biometricCallback);
     }
 
-    public static class BiometricCallback extends BiometricPrompt.AuthenticationCallback {
-        public BiometricCallback() {
-        }
+    public void sendDataToServer() {
+        String barcode = lastScannedBarcode;
 
+        String deviceKey = KeyManager.get(this).getDeviceKey();
+        String totpKey = KeyManager.get(this).getOneTimeKey();
+
+        int middle = barcode.lastIndexOf(';');
+
+        if (middle != -1) {
+            final String loginUrl = barcode.substring(0, middle);
+            Log.d("[MainActivity]", loginUrl);
+            String pairKey = barcode.substring(middle + 1);
+
+            NetworkManager.sendData(this, deviceKey, loginUrl, pairKey, totpKey, new FutureCallback<JsonObject>() {
+                @Override
+                public void onCompleted(Exception e, JsonObject result) {
+                    if (e == null) {
+                        Toast.makeText(MainActivity.this, "Login Success!", Toast.LENGTH_SHORT).show();
+
+                        if (loginUrl.indexOf("facebook") > 0) {
+                            mImageView.setImageDrawable(getResources().getDrawable(R.drawable.facebook, null));
+                            mImageView.setVisibility(View.VISIBLE);
+                        }
+                        else if (loginUrl.indexOf("twitter") > 0) {
+                            mImageView.setImageDrawable(getResources().getDrawable(R.drawable.twitter, null));
+                            mImageView.setVisibility(View.VISIBLE);
+                        }
+
+                        final Handler handler = new Handler();
+                        handler.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                mImageView.setVisibility(View.GONE);
+                            }
+                        }, 1500);
+                    } else {
+                        Toast.makeText(MainActivity.this, "Login Failed!", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            });
+        }
+    }
+
+    public class BiometricCallback extends BiometricPrompt.AuthenticationCallback {
         @Override
         public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
             super.onAuthenticationSucceeded(result);
+            Log.d("[BiometricCallback]", "success");
+            sendDataToServer();
         }
 
         @Override
         public void onAuthenticationHelp(int helpCode, CharSequence helpString) {
             super.onAuthenticationHelp(helpCode, helpString);
+            Log.d("[BiometricCallback]", "help");
         }
 
         @Override
         public void onAuthenticationError(int errorCode, CharSequence errString) {
             super.onAuthenticationError(errorCode, errString);
+            Log.d("[BiometricCallback]", "error");
         }
 
         @Override
         public void onAuthenticationFailed() {
             super.onAuthenticationFailed();
+            Log.d("[BiometricCallback]", "failed");
         }
     }
 }
