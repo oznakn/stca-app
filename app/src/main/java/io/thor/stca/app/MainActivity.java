@@ -76,18 +76,15 @@ public class MainActivity extends AppCompatActivity {
     private void startFingerPrint() {
         FingerprintManagerCompat manager = FingerprintManagerCompat.from(this);
 
-        BiometricCallback biometricCallback = new BiometricCallback();
-
-        if (manager.isHardwareDetected() &&
-                manager.hasEnrolledFingerprints()) {
-            showFingerPrintAuth(biometricCallback);
+        if (manager.isHardwareDetected() && manager.hasEnrolledFingerprints()) {
+            showFingerPrintAuth();
         } else {
-            Toast.makeText(this, "Fingerprint authentication is not supported", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Fingerprint authentication is not supported!", Toast.LENGTH_SHORT).show();
         }
     }
 
-    private void showFingerPrintAuth(final BiometricCallback biometricCallback) {
-        CancellationSignal mCancellationSignal = new CancellationSignal();
+    private void showFingerPrintAuth() {
+        final CancellationSignal mCancellationSignal = new CancellationSignal();
 
         new BiometricPrompt.Builder(this)
                 .setTitle("Biometrics")
@@ -96,11 +93,36 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("Cancel", this.getMainExecutor(), new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialogInterface, int i) {
-                        biometricCallback.onAuthenticationFailed();
+                        dialogInterface.cancel();
                     }
                 })
                 .build()
-                .authenticate(mCancellationSignal, this.getMainExecutor(), biometricCallback);
+                .authenticate(mCancellationSignal, this.getMainExecutor(), new BiometricPrompt.AuthenticationCallback() {
+                    @Override
+                    public void onAuthenticationError(int errorCode, CharSequence errString) {
+                        super.onAuthenticationError(errorCode, errString);
+                        mCancellationSignal.cancel();
+                    }
+
+                    @Override
+                    public void onAuthenticationHelp(int helpCode, CharSequence helpString) {
+                        super.onAuthenticationHelp(helpCode, helpString);
+                    }
+
+                    @Override
+                    public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
+                        super.onAuthenticationSucceeded(result);
+                        sendDataToServer();
+                    }
+
+                    @Override
+                    public void onAuthenticationFailed() {
+                        super.onAuthenticationFailed();
+                        mCancellationSignal.cancel();
+
+                        Toast.makeText(MainActivity.this, "Wrong fingerprint!", Toast.LENGTH_SHORT).show();
+                    }
+                });
     }
 
     public void sendDataToServer() {
@@ -113,7 +135,6 @@ public class MainActivity extends AppCompatActivity {
 
         if (middle != -1) {
             final String loginUrl = barcode.substring(0, middle);
-            Log.d("[MainActivity]", loginUrl);
             String pairKey = barcode.substring(middle + 1);
 
             NetworkManager.sendData(this, deviceKey, loginUrl, pairKey, totpKey, new FutureCallback<JsonObject>() {
@@ -121,55 +142,11 @@ public class MainActivity extends AppCompatActivity {
                 public void onCompleted(Exception e, JsonObject result) {
                     if (e == null) {
                         Toast.makeText(MainActivity.this, "Login Success!", Toast.LENGTH_SHORT).show();
-
-                        if (loginUrl.indexOf("facebook") > 0) {
-                            mImageView.setImageDrawable(getResources().getDrawable(R.drawable.facebook, null));
-                            mImageView.setVisibility(View.VISIBLE);
-                        }
-                        else if (loginUrl.indexOf("twitter") > 0) {
-                            mImageView.setImageDrawable(getResources().getDrawable(R.drawable.twitter, null));
-                            mImageView.setVisibility(View.VISIBLE);
-                        }
-
-                        final Handler handler = new Handler();
-                        handler.postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                mImageView.setVisibility(View.GONE);
-                            }
-                        }, 1500);
                     } else {
                         Toast.makeText(MainActivity.this, "Login Failed!", Toast.LENGTH_SHORT).show();
                     }
                 }
             });
-        }
-    }
-
-    public class BiometricCallback extends BiometricPrompt.AuthenticationCallback {
-        @Override
-        public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
-            super.onAuthenticationSucceeded(result);
-            Log.d("[BiometricCallback]", "success");
-            sendDataToServer();
-        }
-
-        @Override
-        public void onAuthenticationHelp(int helpCode, CharSequence helpString) {
-            super.onAuthenticationHelp(helpCode, helpString);
-            Log.d("[BiometricCallback]", "help");
-        }
-
-        @Override
-        public void onAuthenticationError(int errorCode, CharSequence errString) {
-            super.onAuthenticationError(errorCode, errString);
-            Log.d("[BiometricCallback]", "error");
-        }
-
-        @Override
-        public void onAuthenticationFailed() {
-            super.onAuthenticationFailed();
-            Log.d("[BiometricCallback]", "failed");
         }
     }
 }

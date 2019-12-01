@@ -3,14 +3,10 @@ package io.thor.stca.app;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
-import android.util.Log;
 
 import com.google.zxing.Result;
 
 import me.dm7.barcodescanner.zxing.ZXingScannerView;
-
-import static android.content.ContentValues.TAG;
-
 
 import androidx.appcompat.app.AppCompatActivity;
 

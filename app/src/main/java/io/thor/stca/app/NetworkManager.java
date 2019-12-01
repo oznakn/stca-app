@@ -1,6 +1,7 @@
 package io.thor.stca.app;
 
 import android.content.Context;
+import android.util.Log;
 
 import com.google.gson.JsonObject;
 import com.koushikdutta.async.future.FutureCallback;
@@ -13,9 +14,11 @@ public class NetworkManager {
         JsonObject jsonObject = new JsonObject();
 
         jsonObject.addProperty("bio_id", bioId);
-        jsonObject.addProperty("loginUri", loginUri);
+        jsonObject.addProperty("login_uri", loginUri);
         jsonObject.addProperty("pair_key", pairKey);
         jsonObject.addProperty("tpass", tpass);
+
+        Log.d("[NetworkManager]", jsonObject.toString());
 
         Ion.with(context)
                 .load("POST",SERVER_URL + "/stca/permit/")
